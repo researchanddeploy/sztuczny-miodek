@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """
 ai_linter.py — deterministyczny linter manieryzmu AI (stage-1 pre-scan, 0 tokenów LLM).
-Lustro taksonomii z manieryzm-ai.md — przy zmianie synchronizuj oba pliki (te same ID).
+Katalog markerów ładowany z pliku danych rules.json (Epik A: „Reguła jako dane"; schemat: rules.schema.md).
+Lustro taksonomii z manieryzm-ai.md — przy zmianie synchronizuj rules.json i dokument (te same ID).
+
+Dwa rozłączne rodzaje reguł (czysty rozdział, A5):
+  - DEKLARATYWNE — czyste regexy z rules.json (→ MARKER_DEFS → compile_markers, jedna pętla finditer).
+  - PROCEDURALNE — progi/logika niewyrażalne regexem; funkcje detect_* wołane PO IDENTYFIKATORZE
+    przez DETECTOR_REGISTRY / run_procedural_detector. ID proceduralne: PL-RHYTHM, PL-TYPO, EN-DASH.
+    Z założenia NIE wchodzą do rules.json (regex = dane, detektor = kod z progiem).
+    Kontrakt: patrz DETECTOR_REGISTRY niżej oraz sekcja „Detektory proceduralne (kontrakt)" w manieryzm-ai.md.
 
 Użycie:
     python3 ai_linter.py [--lang {pl,en,both}] [--format {manifest,json}] ścieżka [...]
@@ -14,202 +22,73 @@ import json
 import argparse
 import glob
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 
 # ---------------------------------------------------------------------------
-# KATALOG MARKERÓW
-# Lustro taksonomii z manieryzm-ai.md — przy zmianie synchronizuj oba pliki (te same ID).
-# Krotki: (id, lang, klasa, pattern_str, opis)
-# lang: 'pl' | 'en' | 'both'
-# klasa: 'block' | 'review'
+# KATALOG MARKERÓW — ładowany z pliku danych rules.json (Epik A: „Reguła jako dane").
+#
+# Reguły mieszkają w rules.json (jedno źródło prawdy, parsowalne stdlib — modułem json,
+# ZERO zależności z pip). Linter wczytuje je przy starcie do MARKER_DEFS w identycznym
+# formacie jak dawniej zaszyty literał: lista 5-krotek (id, lang, klasa, pattern_str, opis).
+# Dzięki temu reszta kodu (compile_markers, scan_file) oraz narzędzie tools/gen_rules_json.py
+# działają bez zmian, a zachowanie lintera pozostaje identyczne.
+#
+# Schemat pliku: rules.schema.md. Kolejność wpisów i duplikaty ID mają znaczenie i są
+# zachowywane 1:1. Pola opcjonalne (prog, przyklady, doc) są w tej warstwie ignorowane —
+# A2 nie zmienia detekcji.
+#
+# Lustro taksonomii z manieryzm-ai.md — przy zmianie synchronizuj rules.json i dokument.
+# lang: 'pl' | 'en' | 'both'; klasa: 'block' | 'review'.
 # ---------------------------------------------------------------------------
 
-MARKER_DEFS: List[Tuple[str, str, str, str, str]] = [
-    # --- WARSTWA PL ---
+# Ścieżka do pliku reguł — względem lokalizacji ai_linter.py (a NIE bieżącego katalogu),
+# żeby linter działał wywoływany z dowolnego miejsca (tak robią testy: python3 .../ai_linter.py).
+RULES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules.json")
 
-    # PL-SIGN — puste otwarcia / signposty
-    ("PL-SIGN", "pl", "review",
-     r"\bwarto (?:tu )?(?:podkreśl|zauważ|zaznacz|pamięta|dodać|wspomnieć|nadmienić|zwrócić uwagę)",
-     "puste otwarcie: warto podkreślić/zauważyć"),
-    ("PL-SIGN", "pl", "review",
-     r"\bnależy (?:tu )?(?:zauważyć|podkreślić|pamiętać|zaznaczyć|dodać|wspomnieć)\b",
-     "puste otwarcie: należy zauważyć/podkreślić"),
-    ("PL-SIGN", "pl", "review",
-     r"\bco (?:istotne|ważne|ciekawe|znamienne|warte odnotowania),",
-     "signpost: co istotne/ważne"),
-    ("PL-SIGN", "pl", "review",
-     r"\bw dzisiejszych czasach\b",
-     "klisza temporalna: w dzisiejszych czasach"),
-    ("PL-SIGN", "pl", "review",
-     r"\bw (?:dobie|obliczu|erze)\b",
-     "klisza temporalna: w dobie/obliczu/erze"),
-    ("PL-SIGN", "pl", "review",
-     r"\bw dynamicznie (?:zmieniając|rozwijając)\w* się\b",
-     "klisza: w dynamicznie zmieniającym się"),
-    ("PL-SIGN", "pl", "review",
-     r"\bnie sposób (?:przecenić|nie\b)",
-     "klisza: nie sposób przecenić"),
-    ("PL-SIGN", "pl", "review",
-     r"\bjak (?:powszechnie )?wiadomo\b",
-     "signpost: jak (powszechnie) wiadomo"),
-    ("PL-SIGN", "pl", "review",
-     r"\b(?:podsumowując|reasumując|konkludując|wnioskując|na zakończenie)\b",
-     "signpost zamknięcia: podsumowując/reasumując"),
-    ("PL-SIGN", "pl", "review",
-     r"\b(?:zanurzmy|zagłębmy|przyjrzyjmy|zastanówmy|skupmy|pochylmy) się\b",
-     "meta-zaproszenie: zanurzmy/zagłębmy się"),
-    ("PL-SIGN", "pl", "review",
-     r"\bprzyjrzyjmy się bliżej\b",
-     "meta-zaproszenie: przyjrzyjmy się bliżej"),
-    ("PL-SIGN", "pl", "review",
-     r"\bmam nadzieję, że (?:ten|ta|to|powyższ|niniejsz)",
-     "hedging zamknięcia: mam nadzieję, że ten/ta/to"),
 
-    # PL-CLICHE — frazy-wytrychy
-    ("PL-CLICHE", "pl", "review",
-     r"\bodgrywa (?:kluczow|istotn|ważn|znacząc|niebagateln)\w* rolę\b",
-     "klisza: odgrywa kluczową rolę"),
-    ("PL-CLICHE", "pl", "review",
-     r"\b(?:kluczow|istotn|ważn)\w* rolę odgrywa\b",
-     "klisza: kluczową rolę odgrywa"),
-    ("PL-CLICHE", "pl", "review",
-     r"\bma (?:kluczowe|istotne|ogromne|zasadnicze) znaczenie\b",
-     "klisza: ma kluczowe/istotne znaczenie"),
-    ("PL-CLICHE", "pl", "review",
-     r"\b(?:kluczowe|istotne|ogromne) znaczenie ma\b",
-     "klisza: kluczowe znaczenie ma"),
-    ("PL-CLICHE", "pl", "review",
-     r"\bstanowi (?:integraln\w+ część|nieodłączn\w+ element|fundament|podstawę|trzon|filar)\b",
-     "klisza: stanowi integralną część/fundament"),
-    ("PL-CLICHE", "pl", "review",
-     r"\b(?:rewolucyjn|przełomow|innowacyjn|nowoczesn|nowatorsk|niezrównan|bezprecedensow)\w+\b",
-     "superlatyw: rewolucyjny/przełomowy/innowacyjny"),
-    ("PL-CLICHE", "pl", "review",
-     r"\bmożliwości (?:są )?(?:praktycznie |niemal |wręcz )?(?:nieograniczone|nieskończone)\b",
-     "klisza: możliwości (są) nieograniczone"),
-    ("PL-CLICHE", "pl", "review",
-     r"\bzmienia reguły gry\b",
-     "klisza: zmienia reguły gry"),
-    ("PL-CLICHE", "pl", "review",
-     r"\bto dopiero (?:początek|wierzchołek)\b",
-     "klisza: to dopiero początek/wierzchołek"),
-    ("PL-CLICHE", "pl", "review",
-     r"\bw erze (?:cyfrow|sztucznej inteligencji|AI)\w*\b",
-     "klisza: w erze cyfrowej/AI"),
+def load_marker_defs(path: str = RULES_PATH) -> List[Tuple[str, str, str, str, str]]:
+    """Wczytuje katalog markerów z rules.json do listy 5-krotek (id, lang, klasa, pattern, opis).
 
-    # PL-RHET — figury retoryczne
-    ("PL-RHET", "pl", "block",
-     r"[Tt]o nie (?:jest )?.{1,40}[—–\-] to\b",
-     "antyteza redefinicyjna: To nie X — to Y"),
-    ("PL-RHET", "pl", "block",
-     r"[Tt]o nie (?:jest )?.{1,40}\.\s+[Tt]o\b",
-     "antyteza redefinicyjna: To nie X. To Y"),
-    ("PL-RHET", "pl", "review",
-     r"\bnie tylko\b.{1,80}?\b(?:ale|lecz)(?: również| także| i)?\b",
-     "paralelizm: nie tylko… ale również"),
-    ("PL-RHET", "pl", "review",
-     r"\bz jednej strony\b",
-     "dychotomia: z jednej strony"),
-    ("PL-RHET", "pl", "review",
-     r"\b(\w+), (\w+),? (?:i|oraz) (\w+)\b",
-     "triada?"),
-    ("PL-RHET", "pl", "review",
-     r"\bod \w+(?:y|ów|i)? (?:po|aż po) \w+",
-     "rozpiętość: od X po Y"),
+    Zachowuje kolejność wpisów i duplikaty ID 1:1. Pola opcjonalne (prog/przyklady/doc) są
+    pomijane — ta warstwa odwzorowuje wyłącznie dawny literał MARKER_DEFS.
 
-    # PL-ANTI — antyteza przeciwstawna NIEreferencyjna (bez myślnika, bez "to ... to")
-    # generatorowe domknięcie retoryczne: "X, a nie Y" / inwersja "Y, nie X".
-    # Każde z osobna bywa poprawne w swobodnej mowie → klasa review (high recall);
-    # nagromadzenie ≥3 w pliku eskaluje do block (patrz "PL-ANTI seria" niżej).
-    # Symetryczne do EN-ANTI. Bliźniak redefinicyjnej PL-RHET, której brakowało wariantu bez myślnika.
-    ("PL-ANTI", "pl", "review",
-     r",\s+a nie\b",
-     "antyteza: X, a nie Y"),
-    ("PL-ANTI", "pl", "review",
-     r",\s+nie\s+\w+(?:\s+\w+)?(?=[.!?;\n]|$)",
-     "antyteza inwersyjna: ..., nie Y (domknięcie)"),
+    Kończy z czytelnym błędem (exit 2) gdy: brak pliku, niepoprawny JSON, korzeń JSON nie
+    jest listą reguł, lub wpis nie ma wymaganego pola (linter bez poprawnych reguł nie ma sensu).
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        print(f"[ERROR] Brak pliku reguł: {path}", file=sys.stderr)
+        sys.exit(2)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"[ERROR] Nie można wczytać reguł z {path}: {e}", file=sys.stderr)
+        sys.exit(2)
 
-    # PL-HEDGE — hedging / nadmierna grzeczność
-    ("PL-HEDGE", "pl", "review",
-     r"\b(?:mogłoby|mógłby|można by|dałoby się)\b.{0,30}\b(?:potencjalnie|ewentualnie|w pewnym sensie)\b",
-     "podwójny hedge: mogłoby… potencjalnie"),
-    ("PL-HEDGE", "pl", "review",
-     r"\bpotencjalnie\b",
-     "hedge: potencjalnie"),
-    ("PL-HEDGE", "pl", "review",
-     r"\bwydaje się, że\b",
-     "hedge: wydaje się, że"),
-    ("PL-HEDGE", "pl", "review",
-     r"\bzdaje się, że\b",
-     "hedge: zdaje się, że"),
-    ("PL-HEDGE", "pl", "review",
-     r"\bwarto byłoby rozważyć\b",
-     "hedge: warto byłoby rozważyć"),
-    ("PL-HEDGE", "pl", "review",
-     r"\bw pewnym sensie\b",
-     "hedge: w pewnym sensie"),
+    if not isinstance(raw, list):
+        print(f"[ERROR] rules.json: oczekiwano tablicy reguł, otrzymano {type(raw).__name__}",
+              file=sys.stderr)
+        sys.exit(2)
 
-    # PL-TYPO — typografia / struktura AI
-    # (nagłówki-klisze jako review; em-dash i emoji-w-nagłówku obsługiwane osobną logiką)
-    # bold-overload liczony osobno per akapit (detect_bold_overload) — bez wpisu katalogowego,
-    # by uniknąć fałszywych trafień na wierszach zaczynających się od **etykieta:**
-    ("PL-TYPO", "pl", "review",
-     r"(?m)^#{1,6}\s*(?:Kluczowe wnioski|Najważniejsze (?:punkty|wnioski|informacje)|Co dalej\??|Podsumowanie|Wnioski końcowe)\b",
-     "nagłówek-klisza: Kluczowe wnioski / Podsumowanie"),
+    defs: List[Tuple[str, str, str, str, str]] = []
+    for i, r in enumerate(raw):
+        try:
+            defs.append((r["id"], r["lang"], r["klasa"], r["pattern"], r["opis"]))
+        except KeyError as e:
+            # e.args[0] = nazwa brakującego klucza (bez apostrofów surowego str(KeyError))
+            print(f"[ERROR] rules.json: wpis #{i} — brakujące wymagane pole: {e.args[0]}",
+                  file=sys.stderr)
+            sys.exit(2)
+        except TypeError:
+            # wpis nie jest obiektem (np. liczba / string zamiast słownika reguły)
+            print(f"[ERROR] rules.json: wpis #{i} nie jest obiektem reguły (otrzymano "
+                  f"{type(r).__name__})", file=sys.stderr)
+            sys.exit(2)
+    return defs
 
-    # --- WARSTWA EN ---
 
-    # EN-ANTI — antithesis
-    ("EN-ANTI", "en", "review",
-     r"\bnot (?:just|only|merely|simply)\b.{1,80}?\b(?:but|it'?s|it is)\b",
-     "antythesis: not only/just… but"),
-    ("EN-ANTI", "en", "review",
-     r"\bit'?s not\b.{1,40}[—–\-]\s*it'?s\b",
-     "antythesis: it's not X — it's Y"),
-    ("EN-ANTI", "en", "review",
-     r"\bnot \w+, but \w+\b",
-     "antythesis: not X, but Y"),
-
-    # EN-TRIAD — rule-of-three
-    ("EN-TRIAD", "en", "review",
-     r"\b(\w+), (\w+),? and (\w+)\b",
-     "triad?"),
-
-    # EN-PARA — balanced parallelism
-    ("EN-PARA", "en", "review",
-     r"\bself-\w+ and self-\w+\b",
-     "parallelism: self-X and self-Y"),
-    ("EN-PARA", "en", "review",
-     r"\b(\w+)-(\w+) and (\w+)-(\w+)\b",
-     "parallelism: X-Y and A-B"),
-
-    # EN-CLICHE — signposty / klisze
-    ("EN-CLICHE", "en", "review",
-     r"\b(?:it'?s worth noting|worth noting that|in today'?s (?:fast-paced|ever-changing) world"
-     r"|ever-evolving (?:landscape|world)|delve into|delv(?:e|ing)|tapestry|a testament to"
-     r"|testament to|navigate the complexities|first-class|seamless(?:ly)?|robust"
-     r"|leverag(?:e|ing)|spearhead(?:ed|ing)?|i am (?:confident|excited|thrilled|passionate)"
-     r"(?: that| to| about)?|passionate about|at the end of the day|the through-line"
-     r"|game-?changer|cutting-edge|best-in-class|state-of-the-art"
-     r"|unlock(?:ing)?(?: the)? potential)\b",
-     "EN klisza/signpost"),
-
-    # EN-HEDGE
-    ("EN-HEDGE", "en", "review",
-     r"\b(?:arguably|it could be argued|to some extent|one could say|it may well be)\b",
-     "hedge EN"),
-
-    # EN-SUPER — puste superlatywy
-    ("EN-SUPER", "en", "review",
-     r"\b(?:incredibly|extremely|truly|remarkably|highly|exceptionally|undoubtedly|absolutely|deeply)\b",
-     "superlatyw EN"),
-
-    # EN-CONCL — signposty zamknięcia
-    ("EN-CONCL", "en", "review",
-     r"\b(?:in conclusion|overall|ultimately|all in all|in summary|to sum up|in essence|when all is said)\b",
-     "signpost zamknięcia EN"),
-]
+MARKER_DEFS: List[Tuple[str, str, str, str, str]] = load_marker_defs()
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +303,85 @@ def detect_bold_overload(text: str, lang: str) -> List[Tuple[int, str, str]]:
     return hits
 
 
+# ---------------------------------------------------------------------------
+# REJESTR DETEKTORÓW PROCEDURALNYCH (Epik A: „Reguła jako dane", A5)
+#
+# Czysty rozdział dwóch rodzajów reguł:
+#   1. Reguły DEKLARATYWNE — czyste wzorce regex, mieszkają w rules.json, ładowane do
+#      MARKER_DEFS i kompilowane przez compile_markers(). Wykrywane jedną pętlą po `finditer`.
+#   2. Reguły PROCEDURALNE — wymagają progów i logiki niewyrażalnej regexem (liczenie myślników
+#      na akapit, monotoniczny szyk SVO, nawał łączników, emoji w nagłówku, bold-overload).
+#      Pozostają funkcjami `detect_*` w kodzie i są wołane PO IDENTYFIKATORZE przez ten rejestr.
+#
+# KONTRAKT ADAPTERA PROCEDURALNEGO:
+#   adapter(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]
+#   Zwraca listę krotek (line, mid, klasa, fragment):
+#     - line     : numer linii 1-based (int),
+#     - mid       : identyfikator markera ('PL-TYPO' | 'EN-DASH' | 'PL-RHYTHM' | ...),
+#     - klasa    : 'block' | 'review'  (block → liczy się do blockers i może dać werdykt FAIL),
+#     - fragment : krótki opis trafienia (str).
+#   Adapter jest cienkim wrapperem nad funkcją detect_* (progi/logika żyją w detect_*, nie tutaj).
+#
+# DETECTOR_REGISTRY: lista (detector_id, adapter) w KOLEJNOŚCI wykonania. Kolejność ma znaczenie —
+# wyznacza porządek dodawania trafień do listy hits (przed końcowym sortowaniem po linii), więc
+# zmiana kolejności mogłaby zmienić wyjście przy remisie linii. NIE zmieniaj bez powodu.
+# Wołanie „po identyfikatorze": detektor wybierany jest przez swój detector_id w rejestrze,
+# a nie przez rozsiane po scan_file magic-stringi.
+# ---------------------------------------------------------------------------
+
+def _proc_emdash(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]:
+    """Em-dash overuse (≥3/akapit → block). mid zależny od języka: PL-TYPO / EN-DASH."""
+    return [(line, mid, "block", frag) for (line, mid, frag) in detect_emdash_overuse(text, eff_lang)]
+
+
+def _proc_emoji_heading(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]:
+    """Emoji w nagłówku Markdown → block (PL-TYPO)."""
+    return [(line, "PL-TYPO", "block", frag) for (line, frag) in detect_emoji_in_headings(text)]
+
+
+def _proc_bold(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]:
+    """Bold-overload (≥4/akapit → review, PL-TYPO)."""
+    return [(line, mid, "review", frag) for (line, mid, frag) in detect_bold_overload(text, eff_lang)]
+
+
+def _proc_svo(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]:
+    """Monotoniczny szyk SVO (3 zdania z tym samym tokenem → review, PL-RHYTHM)."""
+    return [(line, "PL-RHYTHM", "review", frag) for (line, frag) in detect_svo_rhythm(text)]
+
+
+def _proc_connector(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]:
+    """Nawał łączników-otwarć (≥3 w pliku → block, PL-RHYTHM)."""
+    return [(line, "PL-RHYTHM", "block", frag) for (line, frag) in detect_connector_overload(text)]
+
+
+# Kolejność jak w historycznym scan_file: emdash → emoji → bold → svo → connector.
+DETECTOR_REGISTRY: List[Tuple[str, Callable[[str, str], List[Tuple[int, str, str, str]]]]] = [
+    ("emdash-overuse", _proc_emdash),
+    ("emoji-in-heading", _proc_emoji_heading),
+    ("bold-overload", _proc_bold),
+    ("svo-rhythm", _proc_svo),
+    ("connector-overload", _proc_connector),
+]
+
+# Zbiór ID markerów emitowanych przez detektory PROCEDURALNE (nie z rules.json).
+# Jawnie deklarowany, by test spójności (A4) nie musiał odpalać detektorów na próbkach.
+# PL-TYPO występuje też wśród deklaratywnych (em-dash/emoji/bold to PL-TYPO); PL-RHYTHM i
+# EN-DASH są wyłącznie proceduralne. Pełny katalog ID = deklaratywne ∪ PROCEDURAL_MARKER_IDS.
+PROCEDURAL_MARKER_IDS = frozenset({"PL-TYPO", "EN-DASH", "PL-RHYTHM"})
+
+
+def run_procedural_detector(detector_id: str, text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]:
+    """Uruchamia pojedynczy detektor proceduralny PO IDENTYFIKATORZE (detector_id z rejestru).
+
+    Zwraca listę krotek (line, mid, klasa, fragment) zgodnie z kontraktem adaptera.
+    Nieznany detector_id → KeyError (świadoma, głośna awaria — literówka w id nie ma się prześliznąć).
+    """
+    for did, adapter in DETECTOR_REGISTRY:
+        if did == detector_id:
+            return adapter(text, eff_lang)
+    raise KeyError(f"Nieznany detektor proceduralny: {detector_id!r}")
+
+
 def scan_file(filepath: str, compiled_markers, lang_filter: str) -> Tuple[List[Hit], FileSummary]:
     """Skanuje jeden plik. Zwraca (hits, summary)."""
     try:
@@ -455,34 +413,15 @@ def scan_file(filepath: str, compiled_markers, lang_filter: str) -> Tuple[List[H
         if cnt > emdash_max:
             emdash_max = cnt
 
-    # --- Specjalna logika em-dash (block po progu ≥3) ---
-    # Dla EN: EN-DASH, dla PL/both: PL-TYPO
+    # --- Detektory PROCEDURALNE (wołane po identyfikatorze z DETECTOR_REGISTRY) ---
+    # Em-dash: dla EN → ID EN-DASH; dla PL/both → ID PL-TYPO. Próg/logika żyją w funkcjach detect_*;
+    # tutaj tylko iterujemy rejestr w ustalonej kolejności i mapujemy klasę → blockers.
     eff_lang = lang_filter if lang_filter != "both" else "pl"  # domyślnie PL dla both
-    # Sprawdź rozszerzenie lub treść — jeśli plik nie ma słów PL, traktuj jako EN
-    # Uproszczenie: opieramy się na lang_filter
-    for (dl, dmid, dfrag) in detect_emdash_overuse(text, eff_lang):
-        hits.append(Hit(filepath, dl, dmid, "block", dfrag))
-        blockers += 1
-
-    # --- Emoji w nagłówkach (block) ---
-    for (el, efrag) in detect_emoji_in_headings(text):
-        hits.append(Hit(filepath, el, "PL-TYPO", "block", efrag))
-        blockers += 1
-
-    # --- Bold-overload (review, nie bloker) ---
-    for (bl, bmid, bfrag) in detect_bold_overload(text, eff_lang):
-        hits.append(Hit(filepath, bl, bmid, "review", bfrag))
-        # review — nie dodaje do blockers
-
-    # --- SVO rhythm (review) ---
-    for (sl, sfrag) in detect_svo_rhythm(text):
-        hits.append(Hit(filepath, sl, "PL-RHYTHM", "review", sfrag))
-
-    # --- Nawał łączników-otwarć (block jeśli ≥3) ---
-    connector_hits = detect_connector_overload(text)
-    for (cl, cfrag) in connector_hits:
-        hits.append(Hit(filepath, cl, "PL-RHYTHM", "block", cfrag))
-        blockers += 1
+    for detector_id, _adapter in DETECTOR_REGISTRY:
+        for (pline, pmid, pklasa, pfrag) in run_procedural_detector(detector_id, text, eff_lang):
+            hits.append(Hit(filepath, pline, pmid, pklasa, pfrag))
+            if pklasa == "block":
+                blockers += 1
 
     # --- Antyteza redefinicyjna PL (block przy współwystąpieniu z innym markerem w akapicie) ---
     # Zbierz trafienia antytezy redefinicyjnej

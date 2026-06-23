@@ -28,6 +28,13 @@ assert_verdict baseline_en_doc.md        FAIL both
 echo "== Regresja: kontrola (oczekiwane PASS, 0 false-positives) =="
 assert_verdict control_pl_clean.md       PASS pl
 
+echo "== Spójność ID: rules.json == linter == manieryzm-ai.md (A4) =="
+if python3 "$DIR/../tools/check_id_consistency.py"; then
+  : # OK — komunikat wypisuje sam skrypt
+else
+  echo "FAIL spójność ID — rozjazd identyfikatorów (patrz wyżej)"; fail=1
+fi
+
 if [[ $fail -eq 0 ]]; then
   echo "WSZYSTKIE TESTY PRZESZŁY."
 else

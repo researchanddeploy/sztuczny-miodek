@@ -1,0 +1,331 @@
+[
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bwarto (?:tu )?(?:podkreśl|zauważ|zaznacz|pamięta|dodać|wspomnieć|nadmienić|zwrócić uwagę)",
+    "opis": "puste otwarcie: warto podkreślić/zauważyć"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bnależy (?:tu )?(?:zauważyć|podkreślić|pamiętać|zaznaczyć|dodać|wspomnieć)\\b",
+    "opis": "puste otwarcie: należy zauważyć/podkreślić"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bco (?:istotne|ważne|ciekawe|znamienne|warte odnotowania),",
+    "opis": "signpost: co istotne/ważne"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bw dzisiejszych czasach\\b",
+    "opis": "klisza temporalna: w dzisiejszych czasach"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bw (?:dobie|obliczu|erze)\\b",
+    "opis": "klisza temporalna: w dobie/obliczu/erze"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bw dynamicznie (?:zmieniając|rozwijając)\\w* się\\b",
+    "opis": "klisza: w dynamicznie zmieniającym się"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bnie sposób (?:przecenić|nie\\b)",
+    "opis": "klisza: nie sposób przecenić"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bjak (?:powszechnie )?wiadomo\\b",
+    "opis": "signpost: jak (powszechnie) wiadomo"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(?:podsumowując|reasumując|konkludując|wnioskując|na zakończenie)\\b",
+    "opis": "signpost zamknięcia: podsumowując/reasumując"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(?:zanurzmy|zagłębmy|przyjrzyjmy|zastanówmy|skupmy|pochylmy) się\\b",
+    "opis": "meta-zaproszenie: zanurzmy/zagłębmy się"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bprzyjrzyjmy się bliżej\\b",
+    "opis": "meta-zaproszenie: przyjrzyjmy się bliżej"
+  },
+  {
+    "id": "PL-SIGN",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bmam nadzieję, że (?:ten|ta|to|powyższ|niniejsz)",
+    "opis": "hedging zamknięcia: mam nadzieję, że ten/ta/to"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bodgrywa (?:kluczow|istotn|ważn|znacząc|niebagateln)\\w* rolę\\b",
+    "opis": "klisza: odgrywa kluczową rolę"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(?:kluczow|istotn|ważn)\\w* rolę odgrywa\\b",
+    "opis": "klisza: kluczową rolę odgrywa"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bma (?:kluczowe|istotne|ogromne|zasadnicze) znaczenie\\b",
+    "opis": "klisza: ma kluczowe/istotne znaczenie"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(?:kluczowe|istotne|ogromne) znaczenie ma\\b",
+    "opis": "klisza: kluczowe znaczenie ma"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bstanowi (?:integraln\\w+ część|nieodłączn\\w+ element|fundament|podstawę|trzon|filar)\\b",
+    "opis": "klisza: stanowi integralną część/fundament"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(?:rewolucyjn|przełomow|innowacyjn|nowoczesn|nowatorsk|niezrównan|bezprecedensow)\\w+\\b",
+    "opis": "superlatyw: rewolucyjny/przełomowy/innowacyjny"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bmożliwości (?:są )?(?:praktycznie |niemal |wręcz )?(?:nieograniczone|nieskończone)\\b",
+    "opis": "klisza: możliwości (są) nieograniczone"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bzmienia reguły gry\\b",
+    "opis": "klisza: zmienia reguły gry"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bto dopiero (?:początek|wierzchołek)\\b",
+    "opis": "klisza: to dopiero początek/wierzchołek"
+  },
+  {
+    "id": "PL-CLICHE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bw erze (?:cyfrow|sztucznej inteligencji|AI)\\w*\\b",
+    "opis": "klisza: w erze cyfrowej/AI"
+  },
+  {
+    "id": "PL-RHET",
+    "lang": "pl",
+    "klasa": "block",
+    "pattern": "[Tt]o nie (?:jest )?.{1,40}[—–\\-] to\\b",
+    "opis": "antyteza redefinicyjna: To nie X — to Y"
+  },
+  {
+    "id": "PL-RHET",
+    "lang": "pl",
+    "klasa": "block",
+    "pattern": "[Tt]o nie (?:jest )?.{1,40}\\.\\s+[Tt]o\\b",
+    "opis": "antyteza redefinicyjna: To nie X. To Y"
+  },
+  {
+    "id": "PL-RHET",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bnie tylko\\b.{1,80}?\\b(?:ale|lecz)(?: również| także| i)?\\b",
+    "opis": "paralelizm: nie tylko… ale również"
+  },
+  {
+    "id": "PL-RHET",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bz jednej strony\\b",
+    "opis": "dychotomia: z jednej strony"
+  },
+  {
+    "id": "PL-RHET",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(\\w+), (\\w+),? (?:i|oraz) (\\w+)\\b",
+    "opis": "triada?"
+  },
+  {
+    "id": "PL-RHET",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bod \\w+(?:y|ów|i)? (?:po|aż po) \\w+",
+    "opis": "rozpiętość: od X po Y"
+  },
+  {
+    "id": "PL-ANTI",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": ",\\s+a nie\\b",
+    "opis": "antyteza: X, a nie Y"
+  },
+  {
+    "id": "PL-ANTI",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": ",\\s+nie\\s+\\w+(?:\\s+\\w+)?(?=[.!?;\\n]|$)",
+    "opis": "antyteza inwersyjna: ..., nie Y (domknięcie)"
+  },
+  {
+    "id": "PL-HEDGE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\b(?:mogłoby|mógłby|można by|dałoby się)\\b.{0,30}\\b(?:potencjalnie|ewentualnie|w pewnym sensie)\\b",
+    "opis": "podwójny hedge: mogłoby… potencjalnie"
+  },
+  {
+    "id": "PL-HEDGE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bpotencjalnie\\b",
+    "opis": "hedge: potencjalnie"
+  },
+  {
+    "id": "PL-HEDGE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bwydaje się, że\\b",
+    "opis": "hedge: wydaje się, że"
+  },
+  {
+    "id": "PL-HEDGE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bzdaje się, że\\b",
+    "opis": "hedge: zdaje się, że"
+  },
+  {
+    "id": "PL-HEDGE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bwarto byłoby rozważyć\\b",
+    "opis": "hedge: warto byłoby rozważyć"
+  },
+  {
+    "id": "PL-HEDGE",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "\\bw pewnym sensie\\b",
+    "opis": "hedge: w pewnym sensie"
+  },
+  {
+    "id": "PL-TYPO",
+    "lang": "pl",
+    "klasa": "review",
+    "pattern": "(?m)^#{1,6}\\s*(?:Kluczowe wnioski|Najważniejsze (?:punkty|wnioski|informacje)|Co dalej\\??|Podsumowanie|Wnioski końcowe)\\b",
+    "opis": "nagłówek-klisza: Kluczowe wnioski / Podsumowanie"
+  },
+  {
+    "id": "EN-ANTI",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\bnot (?:just|only|merely|simply)\\b.{1,80}?\\b(?:but|it'?s|it is)\\b",
+    "opis": "antythesis: not only/just… but"
+  },
+  {
+    "id": "EN-ANTI",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\bit'?s not\\b.{1,40}[—–\\-]\\s*it'?s\\b",
+    "opis": "antythesis: it's not X — it's Y"
+  },
+  {
+    "id": "EN-ANTI",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\bnot \\w+, but \\w+\\b",
+    "opis": "antythesis: not X, but Y"
+  },
+  {
+    "id": "EN-TRIAD",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\b(\\w+), (\\w+),? and (\\w+)\\b",
+    "opis": "triad?"
+  },
+  {
+    "id": "EN-PARA",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\bself-\\w+ and self-\\w+\\b",
+    "opis": "parallelism: self-X and self-Y"
+  },
+  {
+    "id": "EN-PARA",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\b(\\w+)-(\\w+) and (\\w+)-(\\w+)\\b",
+    "opis": "parallelism: X-Y and A-B"
+  },
+  {
+    "id": "EN-CLICHE",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\b(?:it'?s worth noting|worth noting that|in today'?s (?:fast-paced|ever-changing) world|ever-evolving (?:landscape|world)|delve into|delv(?:e|ing)|tapestry|a testament to|testament to|navigate the complexities|first-class|seamless(?:ly)?|robust|leverag(?:e|ing)|spearhead(?:ed|ing)?|i am (?:confident|excited|thrilled|passionate)(?: that| to| about)?|passionate about|at the end of the day|the through-line|game-?changer|cutting-edge|best-in-class|state-of-the-art|unlock(?:ing)?(?: the)? potential)\\b",
+    "opis": "EN klisza/signpost"
+  },
+  {
+    "id": "EN-HEDGE",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\b(?:arguably|it could be argued|to some extent|one could say|it may well be)\\b",
+    "opis": "hedge EN"
+  },
+  {
+    "id": "EN-SUPER",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\b(?:incredibly|extremely|truly|remarkably|highly|exceptionally|undoubtedly|absolutely|deeply)\\b",
+    "opis": "superlatyw EN"
+  },
+  {
+    "id": "EN-CONCL",
+    "lang": "en",
+    "klasa": "review",
+    "pattern": "\\b(?:in conclusion|overall|ultimately|all in all|in summary|to sum up|in essence|when all is said)\\b",
+    "opis": "signpost zamknięcia EN"
+  }
+]

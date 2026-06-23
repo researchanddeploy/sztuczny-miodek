@@ -2,6 +2,8 @@
 
 Plik opisuje 14 kategorii AI-manieryzmu wykrywanych przez skill `sztuczny-miodek`. Jest lustrem `ai_linter.py` — każde ID kategorii w tym dokumencie odpowiada identycznemu ID w linterze. Przy rozbieżności między dokumentem a linterem ten plik jest źródłem prawdy; linter należy zaktualizować.
 
+Sekcje opisowe (przykłady, kolumny „Dlaczego/Poprawka/Próg", bramka PASS/FAIL) są pisane ręcznie. Natomiast sekcja **„Katalog reguł (auto-generowany z rules.json)"** powstaje automatycznie z pliku reguł `rules.json` (jedno źródło prawdy wzorców regex) przez `tools/gen_doc_catalog.py` — nie edytuj jej ręcznie. Po każdej zmianie `rules.json` uruchom generator, a CI pilnuje zgodności (`gen_doc_catalog.py --check`).
+
 ---
 
 ## Warstwa PL
@@ -25,7 +27,7 @@ Frazy, które nie wnoszą treści — jedynie sygnalizują, że AI „przechodzi
 | Zaproszenia do zagłębiania: „Zanurzmy się / przyjrzyjmy się bliżej…" | „Przyjrzyjmy się bliżej temu zagadnieniu." | AI-tell: naśladowanie stylu edukacyjnego wideo. | Usuń; zacznij od meritum. | review |
 | „Mam nadzieję, że ten / ta / to…" | „Mam nadzieję, że ta analiza okaże się pomocna." | Kurtuazyjna formułka AI na końcu odpowiedzi. | Usuń całkowicie. | review |
 
-**Wzorce techniczne (regex, Python `re.IGNORECASE | re.UNICODE`):**
+**Wzorce techniczne (regex, Python `re.IGNORECASE | re.UNICODE`):** _(lista poglądowa, może być niekompletna — źródło prawdy regexów: sekcja „Katalog reguł" niżej, auto-generowana z `rules.json`)_
 `\bwarto (?:tu )?(?:podkreśl|zauważ|zaznacz|pamięta|dodać|wspomnieć|nadmienić|zwrócić uwagę)` · `\bnależy (?:tu )?(?:zauważyć|podkreślić|pamiętać|zaznaczyć|dodać|wspomnieć)\b` · `\bco (?:istotne|ważne|ciekawe|znamienne|warte odnotowania),` · `\bw dzisiejszych czasach\b` · `\bw (?:dobie|obliczu|erze)\b` · `\bw dynamicznie (?:zmieniając|rozwijając)\w* się\b` · `\bnie sposób (?:przecenić|nie\b)` · `\bjak (?:powszechnie )?wiadomo\b` · `\b(?:podsumowując|reasumując|konkludując|wnioskując|na zakończenie)\b` · `\b(?:zanurzmy|zagłębmy|przyjrzyjmy|zastanówmy|skupmy|pochylmy) się\b` · `\bprzyjrzyjmy się bliżej\b` · `\bmam nadzieję, że (?:ten|ta|to|powyższ|niniejsz)`
 
 ---
@@ -246,6 +248,168 @@ Blok podsumowania:
 == SUMMARY ==
 plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | blokery | WERDYKT
 ```
+
+---
+
+## Detektory proceduralne (kontrakt)
+
+Reguły wykrywania dzielą się na dwa rozłączne rodzaje — to świadomy, czysty podział (Epik A, A5):
+
+1. **Reguły deklaratywne** — czyste wzorce regex. Mieszkają w `rules.json` (jedno źródło prawdy), ładowane do `MARKER_DEFS` i kompilowane przez `compile_markers()`. Wykrywane jedną wspólną pętlą `finditer`. To one są przedmiotem auto-katalogu niżej.
+
+2. **Reguły proceduralne** — wymagają progów i logiki, których nie da się wyrazić pojedynczym regexem (liczenie myślników na akapit, monotoniczny szyk SVO, nawał łączników-otwarć, emoji w nagłówku, bold-overload). Pozostają funkcjami `detect_*` w `ai_linter.py` i **z założenia NIE trafiają do `rules.json`** ani do auto-katalogu.
+
+**Dlaczego rozdział:** wzorzec regex jest danymi (konfiguracją), a detektor proceduralny jest kodem (algorytmem z progiem). Trzymanie ich osobno pozwala edytować katalog regexów bez dotykania kodu i odwrotnie.
+
+### Rejestr i wołanie po identyfikatorze
+
+Detektory proceduralne są wołane **po identyfikatorze** przez rejestr `DETECTOR_REGISTRY` w `ai_linter.py` — lista par `(detector_id, adapter)` w ustalonej kolejności wykonania. `scan_file` iteruje po rejestrze (nie zna już poszczególnych funkcji `detect_*` z nazwy), a pojedynczy detektor można uruchomić funkcją `run_procedural_detector(detector_id, text, eff_lang)`.
+
+| `detector_id` | Funkcja `detect_*` | ID markera | Klasa | Próg |
+|---|---|---|---|---|
+| `emdash-overuse` | `detect_emdash_overuse` | `PL-TYPO` (PL/both) / `EN-DASH` (en) | block | ≥3 myślniki w akapicie |
+| `emoji-in-heading` | `detect_emoji_in_headings` | `PL-TYPO` | block | dowolne emoji w linii nagłówka |
+| `bold-overload` | `detect_bold_overload` | `PL-TYPO` | review | ≥4 pogrubienia w akapicie |
+| `svo-rhythm` | `detect_svo_rhythm` | `PL-RHYTHM` | review | 3 zdania z tym samym tokenem otwierającym |
+| `connector-overload` | `detect_connector_overload` | `PL-RHYTHM` | block | ≥3 łączniki-otwarcia w pliku |
+
+**Kolejność w rejestrze ma znaczenie** (wyznacza porządek dodawania trafień przed sortowaniem po linii) — nie zmieniaj jej bez powodu.
+
+### Kontrakt adaptera
+
+```
+adapter(text: str, eff_lang: str) -> List[Tuple[int, str, str, str]]
+```
+
+Zwraca listę krotek `(line, mid, klasa, fragment)`:
+- `line` — numer linii 1-based (`int`),
+- `mid` — identyfikator markera (`'PL-TYPO'` | `'EN-DASH'` | `'PL-RHYTHM'` | …),
+- `klasa` — `'block'` | `'review'` (`block` liczy się do blokerów i może dać werdykt FAIL),
+- `fragment` — krótki opis trafienia (`str`).
+
+Adapter jest cienkim wrapperem nad funkcją `detect_*` — progi i logika żyją w `detect_*`, nie w adapterze. Nieznany `detector_id` w `run_procedural_detector` → `KeyError` (świadoma, głośna awaria, by literówka identyfikatora się nie prześliznęła).
+
+---
+
+## Katalog reguł (auto-generowany z rules.json)
+
+> **Źródło prawdy regexów.** Poniższy katalog (sekcja ujęta w znaczniki „RULES:START" / „RULES:END") jest JEDYNYM miarodajnym źródłem wzorców regex — generowany automatycznie z `rules.json` przez `tools/gen_doc_catalog.py`. Listy „Wzorce techniczne" przy poszczególnych kategoriach wyżej mają charakter wyłącznie opisowy i mogą być NIEKOMPLETNE względem `rules.json` (do czasu pełnej konsolidacji). W razie rozbieżności rozstrzyga ten katalog.
+
+<!-- RULES:START -->
+Sekcja wygenerowana automatycznie z `rules.json` przez `tools/gen_doc_catalog.py` — nie edytuj ręcznie. Liczba reguł regexowych: 47 w 13 kategoriach.
+
+### PL-SIGN — PL — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| puste otwarcie: warto podkreślić/zauważyć | `\bwarto (?:tu )?(?:podkreśl\|zauważ\|zaznacz\|pamięta\|dodać\|wspomnieć\|nadmienić\|zwrócić uwagę)` |
+| puste otwarcie: należy zauważyć/podkreślić | `\bnależy (?:tu )?(?:zauważyć\|podkreślić\|pamiętać\|zaznaczyć\|dodać\|wspomnieć)\b` |
+| signpost: co istotne/ważne | `\bco (?:istotne\|ważne\|ciekawe\|znamienne\|warte odnotowania),` |
+| klisza temporalna: w dzisiejszych czasach | `\bw dzisiejszych czasach\b` |
+| klisza temporalna: w dobie/obliczu/erze | `\bw (?:dobie\|obliczu\|erze)\b` |
+| klisza: w dynamicznie zmieniającym się | `\bw dynamicznie (?:zmieniając\|rozwijając)\w* się\b` |
+| klisza: nie sposób przecenić | `\bnie sposób (?:przecenić\|nie\b)` |
+| signpost: jak (powszechnie) wiadomo | `\bjak (?:powszechnie )?wiadomo\b` |
+| signpost zamknięcia: podsumowując/reasumując | `\b(?:podsumowując\|reasumując\|konkludując\|wnioskując\|na zakończenie)\b` |
+| meta-zaproszenie: zanurzmy/zagłębmy się | `\b(?:zanurzmy\|zagłębmy\|przyjrzyjmy\|zastanówmy\|skupmy\|pochylmy) się\b` |
+| meta-zaproszenie: przyjrzyjmy się bliżej | `\bprzyjrzyjmy się bliżej\b` |
+| hedging zamknięcia: mam nadzieję, że ten/ta/to | `\bmam nadzieję, że (?:ten\|ta\|to\|powyższ\|niniejsz)` |
+
+### PL-CLICHE — PL — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| klisza: odgrywa kluczową rolę | `\bodgrywa (?:kluczow\|istotn\|ważn\|znacząc\|niebagateln)\w* rolę\b` |
+| klisza: kluczową rolę odgrywa | `\b(?:kluczow\|istotn\|ważn)\w* rolę odgrywa\b` |
+| klisza: ma kluczowe/istotne znaczenie | `\bma (?:kluczowe\|istotne\|ogromne\|zasadnicze) znaczenie\b` |
+| klisza: kluczowe znaczenie ma | `\b(?:kluczowe\|istotne\|ogromne) znaczenie ma\b` |
+| klisza: stanowi integralną część/fundament | `\bstanowi (?:integraln\w+ część\|nieodłączn\w+ element\|fundament\|podstawę\|trzon\|filar)\b` |
+| superlatyw: rewolucyjny/przełomowy/innowacyjny | `\b(?:rewolucyjn\|przełomow\|innowacyjn\|nowoczesn\|nowatorsk\|niezrównan\|bezprecedensow)\w+\b` |
+| klisza: możliwości (są) nieograniczone | `\bmożliwości (?:są )?(?:praktycznie \|niemal \|wręcz )?(?:nieograniczone\|nieskończone)\b` |
+| klisza: zmienia reguły gry | `\bzmienia reguły gry\b` |
+| klisza: to dopiero początek/wierzchołek | `\bto dopiero (?:początek\|wierzchołek)\b` |
+| klisza: w erze cyfrowej/AI | `\bw erze (?:cyfrow\|sztucznej inteligencji\|AI)\w*\b` |
+
+### PL-RHET — PL — klasa: block / review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| antyteza redefinicyjna: To nie X — to Y | `[Tt]o nie (?:jest )?.{1,40}[—–\-] to\b` |
+| antyteza redefinicyjna: To nie X. To Y | `[Tt]o nie (?:jest )?.{1,40}\.\s+[Tt]o\b` |
+| paralelizm: nie tylko… ale również | `\bnie tylko\b.{1,80}?\b(?:ale\|lecz)(?: również\| także\| i)?\b` |
+| dychotomia: z jednej strony | `\bz jednej strony\b` |
+| triada? | `\b(\w+), (\w+),? (?:i\|oraz) (\w+)\b` |
+| rozpiętość: od X po Y | `\bod \w+(?:y\|ów\|i)? (?:po\|aż po) \w+` |
+
+### PL-ANTI — PL — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| antyteza: X, a nie Y | `,\s+a nie\b` |
+| antyteza inwersyjna: ..., nie Y (domknięcie) | `,\s+nie\s+\w+(?:\s+\w+)?(?=[.!?;\n]\|$)` |
+
+### PL-HEDGE — PL — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| podwójny hedge: mogłoby… potencjalnie | `\b(?:mogłoby\|mógłby\|można by\|dałoby się)\b.{0,30}\b(?:potencjalnie\|ewentualnie\|w pewnym sensie)\b` |
+| hedge: potencjalnie | `\bpotencjalnie\b` |
+| hedge: wydaje się, że | `\bwydaje się, że\b` |
+| hedge: zdaje się, że | `\bzdaje się, że\b` |
+| hedge: warto byłoby rozważyć | `\bwarto byłoby rozważyć\b` |
+| hedge: w pewnym sensie | `\bw pewnym sensie\b` |
+
+### PL-TYPO — PL — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| nagłówek-klisza: Kluczowe wnioski / Podsumowanie | `(?m)^#{1,6}\s*(?:Kluczowe wnioski\|Najważniejsze (?:punkty\|wnioski\|informacje)\|Co dalej\??\|Podsumowanie\|Wnioski końcowe)\b` |
+
+### EN-ANTI — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| antythesis: not only/just… but | `\bnot (?:just\|only\|merely\|simply)\b.{1,80}?\b(?:but\|it'?s\|it is)\b` |
+| antythesis: it's not X — it's Y | `\bit'?s not\b.{1,40}[—–\-]\s*it'?s\b` |
+| antythesis: not X, but Y | `\bnot \w+, but \w+\b` |
+
+### EN-TRIAD — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| triad? | `\b(\w+), (\w+),? and (\w+)\b` |
+
+### EN-PARA — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| parallelism: self-X and self-Y | `\bself-\w+ and self-\w+\b` |
+| parallelism: X-Y and A-B | `\b(\w+)-(\w+) and (\w+)-(\w+)\b` |
+
+### EN-CLICHE — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| EN klisza/signpost | `\b(?:it'?s worth noting\|worth noting that\|in today'?s (?:fast-paced\|ever-changing) world\|ever-evolving (?:landscape\|world)\|delve into\|delv(?:e\|ing)\|tapestry\|a testament to\|testament to\|navigate the complexities\|first-class\|seamless(?:ly)?\|robust\|leverag(?:e\|ing)\|spearhead(?:ed\|ing)?\|i am (?:confident\|excited\|thrilled\|passionate)(?: that\| to\| about)?\|passionate about\|at the end of the day\|the through-line\|game-?changer\|cutting-edge\|best-in-class\|state-of-the-art\|unlock(?:ing)?(?: the)? potential)\b` |
+
+### EN-HEDGE — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| hedge EN | `\b(?:arguably\|it could be argued\|to some extent\|one could say\|it may well be)\b` |
+
+### EN-SUPER — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| superlatyw EN | `\b(?:incredibly\|extremely\|truly\|remarkably\|highly\|exceptionally\|undoubtedly\|absolutely\|deeply)\b` |
+
+### EN-CONCL — EN — klasa: review
+
+| Opis | Wzorzec (regex) |
+|---|---|
+| signpost zamknięcia EN | `\b(?:in conclusion\|overall\|ultimately\|all in all\|in summary\|to sum up\|in essence\|when all is said)\b` |
+<!-- RULES:END -->
 
 ---
 
