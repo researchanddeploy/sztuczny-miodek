@@ -116,6 +116,20 @@ Bliźniak PL-RHET, którego brakowało: ta sama figura przeciwstawienia, ale **b
 
 ---
 
+### PL-NORMA — norma językowa w przekładzie (klasa: review)
+
+Nie jest to manieryzm AI, tylko naruszenia normy, które przekład z angielskiego (ludzki
+i maszynowy) produkuje seryjnie. Linter łapie wersje dające się opisać regexem; reszta
+kategorii (łączliwość, personifikacja procesu) wymaga osądu, zob. `references/wykrywanie-bledow.md`.
+
+| Wzorzec | Przykład błędny | Poprawka |
+|---|---|---|
+| stopniowanie przymiotnika absolutnego | najbardziej elementarnych reguł | elementarnych reguł |
+| podwójne „się" | sprzeciwia się trzymaniu się w cieniu | odrzuca trzymanie się w cieniu |
+| kalka *on its own terms* | przechwycić algorytm na jego własnych warunkach | grając według jego własnych reguł |
+| uszkodzony frazeologizm | rozejść się echem | odbić się echem, rozbrzmieć |
+| fałszywy przyjaciel | w minionej dekadzie | w minionym dziesięcioleciu |
+
 ## Warstwa EN (proza angielska — CV/CL/docs)
 
 Dotyczy angielskich tekstów kandydackich i dokumentów profesjonalnych. Kolumny „Dlaczego" i „Poprawka" po polsku — dla operatora PL.
@@ -209,6 +223,43 @@ Jeden pattern obejmuje wszystkie warianty (IGNORECASE):
 
 ---
 
+## Warstwa konstrukcyjna
+
+### PL-STRUKT — budowa zdania i akapitu (klasa: `strukt`, własna metryka)
+
+Wszystko powyżej to czarna lista fraz: łapie słowa, nie konstrukcję. Ta warstwa mierzy,
+jak zdanie jest zbudowane, i dlatego działa na tekstach, które nie użyły ani jednej
+klisze z katalogu, a mimo to brzmią generatorowo.
+
+Uzasadnienie z pomiaru autora: w pomiarze
+między modelami sama czarna lista słów obniżyła slop o 3–40% (niestabilnie), a nadanie
+modelowi systemu budowy zdania o 43–74% na każdym testowanym modelu.
+
+| Kategoria | Próg | Co wykrywa |
+|---|---|---|
+| `zdanie>25w` | >25 słów | Zdanie-wielopiętrowiec. STE: 20 dla instrukcji, 25 dla opisu; polski dostaje 25, bo fleksja wydłuża |
+| `akapit>6zd` | >6 zdań | Akapit bez jednego tematu |
+| `strona_bierna` | każde | „zostać" + imiesłów bierny („raport został przygotowany") |
+| `nominalizacja` | każde | Czasownik lekki + rzeczownik odsłowny („dokonał analizy" zamiast „przeanalizował"), „w celu przedstawienia" |
+| `imieslow_seria` | ≥2 w zdaniu | Nawał imiesłowów na `-ąc`/`-wszy` („uwzględniając…, biorąc pod uwagę…") |
+
+**Świadome ograniczenie zakresu:** strona bierna łapie wyłącznie konstrukcję z „zostać",
+a nie „jest + imiesłów". W polskim „jest znany", „jest ważny" i „jest zbudowany" są
+nierozróżnialne regexem, więc szerszy wzorzec produkowałby głównie fałszywe trafienia.
+Ta sama pułapka wywróciła linter źródłowy eksperymentu STE, gdzie regex `is \w+ed`
+liczył „is red" jako stronę bierną, a strona bierna była tam największą kategorią wyniku.
+
+**Metryka:** `strukt/100w = naruszenia × 100 / słowa prozy`. Liczona osobno od gęstości
+frazowej, bo obie skale są nieporównywalne. Proza wyłącznie: bez kodu, tabel, list,
+nagłówków i cytatów.
+
+**Kalibracja progu (2026-07-28):** prywatny korpus autora (50 plików reguł roboczych uznanych
+za wzorcową polszczyznę) daje medianę 1,14 i maksimum 1,92. Tekst rozwlekły w tym samym
+sensie: 14,55. Próg 4,0 leży ponad dwukrotnie nad najgorszym dobrym plikiem i daleko pod
+złym. Przy zmianie zestawu reguł przelicz rozkład zamiast zgadywać.
+
+---
+
 ## Bramka PASS/FAIL
 
 Semantyka: **„PASS z uwagami = NIE PASS"**. Każdy nierozwiązany flag po korekcie blokuje PASS.
@@ -231,8 +282,13 @@ Semantyka: **„PASS z uwagami = NIE PASS"**. Każdy nierozwiązany flag po kore
 - Gęstość ważona > progu: `trafienia / max(1, słowa/500) > 8`.
 - Obliczenie: `słowa = len(re.findall(r"\w+", text))`.
 
+### FAIL (konstrukcja)
+- `strukt/100w > 4,0` — naruszenia budowy zdania na 100 słów prozy (PL-STRUKT).
+- Niezależne od gęstości frazowej: tekst bez ani jednej klisze z katalogu może wpaść tu i tylko tu.
+
 ### PASS
-Tylko gdy 0 blokerów i gęstość ≤ 8. Po korekcie każdy nierozwiązany flag = brak PASS.
+Tylko gdy 0 blokerów, gęstość ≤ 8 i `strukt/100w` ≤ 4,0. Po korekcie każdy nierozwiązany
+flag = brak PASS.
 
 ### Format wyjścia lintera
 
@@ -244,7 +300,7 @@ plik:linia:ID:KLASA:dopasowany_fragment
 Blok podsumowania:
 ```
 == SUMMARY ==
-plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | blokery | WERDYKT
+plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | strukt/100w | blokery | WERDYKT
 ```
 
 ---
@@ -260,6 +316,7 @@ plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | blokery | WER
 | PL-RHYTHM | PL | block / review | Nawał łączników (block ≥3), monotoniczny szyk SVO (review) |
 | PL-HEDGE | PL | review | Hedging: tryb warunkowy + „potencjalnie", „wydaje się że" |
 | PL-TYPO | PL | block / review | Em-dash ≥3/akapit (block), emoji w nagłówku (block), bold-overload (review) |
+| PL-NORMA | PL | review | Norma w przekładzie: stopniowanie absolutnych, podwójne „się", „na własnych warunkach", „rozejść się echem", „dekada" |
 | EN-DASH | EN | block | Em-dash ≥3/akapit w tekście angielskim |
 | EN-ANTI | EN | block / review | Antyteza „not X but Y" (review), seria antytez (block) |
 | EN-TRIAD | EN | review | Triada „X, Y, and Z" |
@@ -268,3 +325,4 @@ plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | blokery | WER
 | EN-HEDGE | EN | review | Hedging: „arguably", „to some extent", „one could say" |
 | EN-SUPER | EN | review | Puste superlatywy: „incredibly", „truly", „undoubtedly" |
 | EN-CONCL | EN | review | Signposty zamknięcia: „in conclusion", „ultimately", „to sum up" |
+| PL-STRUKT | PL | strukt | Budowa: długie zdanie/akapit, strona bierna z „zostać", nominalizacja, seria imiesłowów. Własna metryka `strukt/100w`, próg 4,0 |

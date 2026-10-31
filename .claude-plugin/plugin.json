@@ -1,7 +1,7 @@
 {
   "name": "sztuczny-miodek",
   "description": "Audyt polszczyzny i eradykacja manieryzmu AI (AI-tellów) w tekstach PL i EN — pragmatyczny puryzm Jana Miodka. Twarda bramka jakości przed publikacją.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Tomasz Jakubowski",
     "url": "https://github.com/researchanddeploy"

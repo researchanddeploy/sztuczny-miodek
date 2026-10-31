@@ -118,6 +118,25 @@ MARKER_DEFS: List[Tuple[str, str, str, str, str]] = [
      r"\bod \w+(?:y|ów|i)? (?:po|aż po) \w+",
      "rozpiętość: od X po Y"),
 
+    # PL-NORMA — naruszenia normy częste w przekładzie z ang. (nie manieryzm AI).
+    # Źródło: audyt przekładu tekstu publicystycznego (2026-10-31).
+    ("PL-NORMA", "pl", "review",
+     r"\bnajbardziej (?:elementarn|optymaln|unikaln|idealn|doskonał"
+     r"|maksymaln|minimaln|absolutn)\w*",
+     "stopniowanie przymiotnika absolutnego"),
+    ("PL-NORMA", "pl", "review",
+     r"\bsię \w+ się\b",
+     "podwójne „się” w sąsiedztwie"),
+    ("PL-NORMA", "pl", "review",
+     r"\bna (?:jego|jej|ich|swoich|swych|naszych|własnych) (?:własnych )?warunkach\b",
+     "kalka on its own terms: według własnych reguł?"),
+    ("PL-NORMA", "pl", "review",
+     r"\brozesz\w* się echem|\brozejść się echem",
+     "frazeologizm: odbić się echem / rozbrzmieć"),
+    ("PL-NORMA", "pl", "review",
+     r"\b(?:minion|ostatni|poprzedni)\w* dekad",
+     "fałszywy przyjaciel: dekada → dziesięciolecie"),
+
     # PL-ANTI — antyteza przeciwstawna NIEreferencyjna (bez myślnika, bez "to ... to")
     # generatorowe domknięcie retoryczne: "X, a nie Y" / inwersja "Y, nie X".
     # Każde z osobna bywa poprawne w swobodnej mowie → klasa review (high recall);
@@ -242,6 +261,101 @@ CONNECTOR_RE = re.compile(
 BOLD_RE = re.compile(r"\*\*[^*]+\*\*")
 
 
+# ---------------------------------------------------------------------------
+# WARSTWA KONSTRUKCYJNA — PL-STRUKT
+# Katalog markerów wyżej to czarna lista fraz: łapie slowa, nie budowę zdania.
+# Ta warstwa mierzy konstrukcję i jest liczona OSOBNO (własna metryka strukt/100w),
+# bo skala naruszeń budowy jest inna niż skala trafień frazowych.
+# Podstawa: ASD-STE100 + /rules/ai-tells.md (system pisania bije czarną listę).
+# ---------------------------------------------------------------------------
+
+MAX_ZDANIE_SLOW = 25      # STE: 20 dla instrukcji, 25 dla opisu; polski dłuższy fleksyjnie
+MAX_ZDAN_AKAPIT = 6
+PROG_STRUKT_100W = 4.0    # ponytail: kalibrowane na tests/, nie z teorii — przestrój, gdy szumi
+
+_CODE_RE = re.compile(r"```.*?```", re.S)
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
+_SKROT_RE = re.compile(r"\b(?:np|itd|itp|tj|tzw|m\.in|ok|ul|r|w|nr|str|proc|dr|prof|godz)\.", re.I | re.U)
+
+# Strona bierna analityczna: "zostać" + imiesłów bierny. Wysoka precyzja — po formie
+# "został" praktycznie zawsze stoi imiesłów. Świadomie NIE łapiemy "jest + -ny",
+# bo tam mieszają się orzeczniki przymiotnikowe ("jest ważny") i powstaje szum.
+BIERNA_RE = re.compile(r"\bzosta\w{1,4}\s+(?:\w+\s+)?\w{4,}(?:ny|na|ne|ni|ty|ta|te|ci)\b", re.I | re.U)
+
+# Nominalizacja: czasownik lekki + rzeczownik odsłowny zamiast jednego czasownika.
+NOMINALIZACJA_RE = re.compile(
+    r"\b(?:dokona\w*|dokonyw\w*|przeprowadz\w*|realizuj\w*|realizowa\w*|ulega\w*|podlega\w*|następuje|następują)"
+    r"\s+(?:\w+\s+)?(?:\w{4,}(?:nia|nie|niu|cji|cja|cję|ości|anie|ania|eniu)"
+    r"|analiz\w*|ocen[aęy]\w*|weryfikacj\w*|przegląd\w*|korekt\w*|pomiar\w*|wybor\w*)\b",
+    re.I | re.U,
+)
+W_CELU_RE = re.compile(r"\bw celu\s+(?:\w+\s+)?\w{4,}(?:nia|enia|ania|cji)\b", re.I | re.U)
+
+# Imiesłowy przysłówkowe: pojedynczy jest poprawny, nagromadzenie w jednym zdaniu
+# to typowy generatorowy zawijas.
+IMIESLOW_RE = re.compile(r"\b\w{4,}(?:ąc|ąwszy|wszy)\b", re.U)
+
+
+def _strip_code(text: str) -> str:
+    """Usuwa bloki i wstawki kodu — składnia nie podlega ocenie stylu."""
+    return _INLINE_CODE_RE.sub(" ", _CODE_RE.sub(" ", text))
+
+
+def _split_sentences_pl(text: str) -> List[str]:
+    """Dzieli prozę na zdania, chroniąc skróty typu 'np.', 'm.in.', 'r.'."""
+    masked = _SKROT_RE.sub(lambda m: m.group(0).replace(".", "\x00"), text)
+    out = []
+    for part in re.split(r"(?<=[.!?…])\s+", masked):
+        s = part.replace("\x00", ".").strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def _slowa(s: str) -> int:
+    return len(re.findall(r"\w+", s, re.U))
+
+
+def scan_structure(text: str) -> Tuple[List[Tuple[int, str, str]], int]:
+    """
+    Warstwa konstrukcyjna. Zwraca (lista (line, kategoria, fragment), liczba_słów_prozy).
+    Liczona na samej prozie: bez kodu, tabel, list, nagłówków i cytatów.
+    """
+    text = _strip_code(text)
+    hits: List[Tuple[int, str, str]] = []
+    slowa_prozy = 0
+
+    for offset, para in split_paragraphs(text):
+        proza = _prose_only(para)
+        if not proza.strip():
+            continue
+        zdania = _split_sentences_pl(proza)
+        slowa_prozy += sum(_slowa(z) for z in zdania)
+        linia_akapitu = get_line_number(text, offset)
+
+        if len(zdania) > MAX_ZDAN_AKAPIT:
+            hits.append((linia_akapitu, "akapit>6zd",
+                         truncate_fragment(f"akapit ×{len(zdania)} zdań: {proza[:40]}")))
+
+        for z in zdania:
+            n = _slowa(z)
+            linia = get_line_number(text, offset + proza.find(z)) if proza.find(z) >= 0 else linia_akapitu
+            if n > MAX_ZDANIE_SLOW:
+                hits.append((linia, f"zdanie>{MAX_ZDANIE_SLOW}w",
+                             truncate_fragment(f"{n} słów: {z}")))
+            for m in BIERNA_RE.finditer(z):
+                hits.append((linia, "strona_bierna", truncate_fragment(m.group(0))))
+            for rx in (NOMINALIZACJA_RE, W_CELU_RE):
+                for m in rx.finditer(z):
+                    hits.append((linia, "nominalizacja", truncate_fragment(m.group(0))))
+            imieslowy = IMIESLOW_RE.findall(z)
+            if len(imieslowy) >= 2:
+                hits.append((linia, "imieslow_seria",
+                             truncate_fragment(f"×{len(imieslowy)}: {', '.join(imieslowy[:3])}")))
+
+    return hits, slowa_prozy
+
+
 def has_emoji(s: str) -> bool:
     """Zwraca True jeśli napis zawiera emoji z zakresów ze specyfikacji."""
     for ch in s:
@@ -283,6 +397,8 @@ class FileSummary:
     density: float
     blockers: int
     verdict: str
+    strukt: int = 0
+    strukt_per100w: float = 0.0
 
 
 def truncate_fragment(s: str, maxlen: int = 60) -> str:
@@ -546,15 +662,21 @@ def scan_file(filepath: str, compiled_markers, lang_filter: str) -> Tuple[List[H
                 h.klasa = "block"
                 blockers += 1
 
-    # --- Gęstość ---
+    # --- Gęstość (tylko warstwa frazowa) ---
     total_hits = len(hits)
     density = total_hits / max(1, words / 500)
+
+    # --- Warstwa konstrukcyjna: własny licznik, poza `density` ---
+    struct_hits, slowa_prozy = scan_structure(text)
+    for (sl, kat, sfrag) in struct_hits:
+        hits.append(Hit(filepath, sl, "PL-STRUKT", "strukt", f"{kat}: {sfrag}"))
+    strukt_per100w = len(struct_hits) * 100.0 / max(1, slowa_prozy)
 
     # --- Werdykt ---
     cyrillic_found = any(h.mid == "PL-SIGN" and "CYRYLICA" in h.match_fragment for h in hits)
     if cyrillic_found:
         verdict = "FAIL-HARD"
-    elif blockers > 0 or density > 8:
+    elif blockers > 0 or density > 8 or strukt_per100w > PROG_STRUKT_100W:
         verdict = "FAIL"
     else:
         verdict = "PASS"
@@ -567,6 +689,8 @@ def scan_file(filepath: str, compiled_markers, lang_filter: str) -> Tuple[List[H
         density=round(density, 2),
         blockers=blockers,
         verdict=verdict,
+        strukt=len(struct_hits),
+        strukt_per100w=round(strukt_per100w, 2),
     )
 
     # Posortuj trafienia po linii
@@ -616,10 +740,11 @@ def format_manifest(all_hits: List[Hit], summaries: List[FileSummary]) -> str:
 
     lines.append("")
     lines.append("== SUMMARY ==")
-    lines.append("plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | blokery | WERDYKT")
+    lines.append("plik | słowa | trafienia | em-dash/akapit(max) | gęstość/500 | strukt/100w | blokery | WERDYKT")
     for s in summaries:
         lines.append(
-            f"{s.file} | {s.words} | {s.hits} | {s.emdash_max} | {s.density} | {s.blockers} | {s.verdict}"
+            f"{s.file} | {s.words} | {s.hits} | {s.emdash_max} | {s.density} | "
+            f"{s.strukt_per100w} | {s.blockers} | {s.verdict}"
         )
     return "\n".join(lines)
 
@@ -638,6 +763,8 @@ def format_json(all_hits: List[Hit], summaries: List[FileSummary]) -> str:
                 "hits": s.hits,
                 "emdash_max": s.emdash_max,
                 "density": s.density,
+                "strukt": s.strukt,
+                "strukt_per100w": s.strukt_per100w,
                 "blockers": s.blockers,
                 "verdict": s.verdict,
             }

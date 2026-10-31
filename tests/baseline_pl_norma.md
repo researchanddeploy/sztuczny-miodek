@@ -1,0 +1,1 @@
+W minionej dekadzie ruch odrzucił najbardziej elementarne reguły. Ruch sprzeciwia się trzymaniu się w cieniu. Ofensywa może przechwycić algorytm na jego własnych warunkach. Polecenia mają rozejść się echem wśród uczestników.
